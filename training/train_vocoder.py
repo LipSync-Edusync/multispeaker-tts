@@ -1,23 +1,21 @@
 import torch
-from models.speaker_encoder import SpeakerEncoder, GE2ELoss
-from data.datasets import SpeakerVerificationDataset
+from models.vocoder import WaveNet
+from data.datasets import TTSDataset
 from torch.utils.data import DataLoader
 from utils.audio import AudioProcessor
 
-def train_speaker_encoder():
+def train_vocoder():
     # Configuration
     config = {
-        'data_root': 'path/to/speaker_verification_dataset',
-        'checkpoint_dir': 'checkpoints/speaker_encoder',
-        'batch_size': 64,
-        'num_utterances': 5,
-        'num_speakers': 64,  # Speakers per batch
+        'data_root': 'path/to/tts_dataset',
+        'checkpoint_dir': 'checkpoints/vocoder',
+        'batch_size': 16,
         'lr': 1e-4,
         'epochs': 100,
         'save_interval': 5,
         'audio': {
-            'sample_rate': 16000,
-            'num_mels': 40,
+            'sample_rate': 22050,
+            'num_mels': 80,
             'n_fft': 1024,
             'hop_length': 256,
             'win_length': 1024
@@ -27,18 +25,24 @@ def train_speaker_encoder():
     # Initialize
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     ap = AudioProcessor(**config['audio'])
-    model = SpeakerEncoder().to(device)
-    criterion = GE2ELoss().to(device)
+    
+    # Initialize vocoder
+    model = WaveNet(
+        n_mels=config['audio']['num_mels'],
+        residual_channels=512,
+        gate_channels=512,
+        skip_channels=256,
+        kernel_size=3,
+        n_layers=30,
+        dropout=0.05
+    ).to(device)
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+    criterion = torch.nn.CrossEntropyLoss()
 
     # Dataset and loader
-    dataset = SpeakerVerificationDataset(
-        config['data_root'],
-        ap,
-        num_utterances=config['num_utterances']
-    )
-    loader = DataLoader(dataset, batch_size=config['num_speakers'], shuffle=True)
+    dataset = TTSDataset(config['data_root'], ap)
+    loader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
 
     # Training loop
     for epoch in range(config['epochs']):
@@ -46,27 +50,23 @@ def train_speaker_encoder():
         total_loss = 0
         
         for batch in loader:
-            # Prepare batch: [num_speakers, num_utterances, mel_len, n_mels]
+            # Prepare inputs
             mels = batch['mel'].to(device)
-            N, M = mels.size(0), mels.size(1)
-            mels = mels.view(N * M, -1, config['audio']['num_mels'])
+            wavs = batch['wav'].to(device)  # data mod to ret waveform
             
             # Forward pass
-            embeddings = model(mels)
-            embeddings = embeddings.view(N, M, -1)
+            outputs = model(wavs, mels)
             
             # Compute loss
-            loss = criterion(embeddings)
+            loss = criterion(outputs, wavs.long())
             
             # Backward pass
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             
             total_loss += loss.item()
-        
-        scheduler.step()
         
         # Logging
         avg_loss = total_loss / len(loader)
@@ -79,7 +79,7 @@ def train_speaker_encoder():
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch,
                 'config': config
-            }, f"{config['checkpoint_dir']}/se_{epoch+1}.pt")
+            }, f"{config['checkpoint_dir']}/vocoder_{epoch+1}.pt")
 
 if __name__ == '__main__':
-    train_speaker_encoder()
+    train_vocoder()
