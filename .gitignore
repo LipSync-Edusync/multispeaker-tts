@@ -62,9 +62,7 @@ experiments/
 results/
 saved_models/
 pretrained_models/
-models/
-configs/
-data/
+
 
 # Python dependency files
 Pipfile.lock
