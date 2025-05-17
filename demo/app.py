@@ -54,12 +54,12 @@ if st.button("Synthesize") and selected_audio is not None:
     audio, sr = sf.read(selected_audio)
     if sr != tts.config['audio']['sample_rate']:
         st.warning(f"Resampling from {sr}Hz to {tts.config['audio']['sample_rate']}Hz")
-        # audio = tts.ap.resample(audio, sr, tts.config['audio']['sample_rate']) #implement
+        audio = tts.ap.resample(audio, sr, tts.config['audio']['sample_rate']) #implement
         
     # synthesize
-    # with st.spinner("Synthesizing..."):
-        # waveform = tts.synthesize(text_input, audio) implement
-    
+    with st.spinner("Synthesizing..."):
+        waveform = tts.synthesize(text_input, audio)
+            
     # display
-    st.audio(selected_audio, sample_rate=tts.config['audio']['sample_rate'])
+    st.audio(waveform, sample_rate=tts.config['audio']['sample_rate'])
     st.success("Synthesys Complete")
