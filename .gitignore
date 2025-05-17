@@ -1,0 +1,85 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# VS Code settings
+.vscode/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+
+# System-specific files
+.DS_Store
+Thumbs.db
+
+# Logs and runtime
+*.log
+*.tmp
+*.pid
+*.swp
+
+# Compiled models or checkpoints
+*.pth
+*.pt
+*.ckpt
+*.pb
+*.onnx
+
+# Audio and data files
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.zip
+*.tar.gz
+*.npz
+*.npy
+*.csv
+
+# Streamlit generated cache/state
+.streamlit/
+**/.streamlit/
+**/.pytest_cache/
+
+# Model/config/data folders
+checkpoints/
+outputs/
+logs/
+runs/
+experiments/
+results/
+saved_models/
+pretrained_models/
+models/
+configs/
+data/
+
+# Python dependency files
+Pipfile.lock
+poetry.lock
+
+# OS-generated files
+ehthumbs.db
+desktop.ini
+
+# Token/private keys/secrets
+.env
+.env.*
+*.key
+*.pem
+
+# PyTorch Lightning or HuggingFace Trainer logs
+lightning_logs/
+wandb/
