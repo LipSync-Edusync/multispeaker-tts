@@ -4,8 +4,9 @@ import argparse
 import json
 from pathlib import Path
 from tqdm import tqdm
-from datasets.utils import create_speaker_mapping, load_metadata
-from datasets.tts_dataset import TTSDataset
+from data.datasets.utils import create_speaker_mapping, load_metadata
+from data.datasets.tts_dataset import TTSDataset
+from utils import AudioProcessor
 import numpy as np
 
 def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
@@ -76,7 +77,7 @@ if __name__ == '__main__':
                        help='Hop length for STFT')
     args = parser.parse_args()
     
-    from utils.audio import AudioProcessor
+    
     ap = AudioProcessor(
         sample_rate=args.sample_rate,
         n_fft=args.n_fft,

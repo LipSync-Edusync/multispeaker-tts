@@ -6,7 +6,7 @@ class GE2ELoss(nn.Module):
     # generalized end-2-end loss for speaker verification
     
     def __init__(self, init_w=10.0, init_b=-5.0):
-        super.__init__()
+        super().__init__()
         self.w = nn.Parameter(torch.tensor(init_w))
         self.b = nn.Parameter(torch.tensor(init_b))
     

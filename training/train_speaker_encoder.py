@@ -1,19 +1,20 @@
 import torch
-from models.speaker_encoder import SpeakerEncoder, GE2ELoss
+import argparse
+from models import SpeakerEncoder, GE2ELoss
 from data.datasets import SpeakerVerificationDataset
 from torch.utils.data import DataLoader
 from utils.audio import AudioProcessor
 
-def train_speaker_encoder():
+def train_speaker_encoder(args):
     # Configuration
     config = {
-        'data_root': 'path/to/speaker_verification_dataset',
-        'checkpoint_dir': 'checkpoints/speaker_encoder',
-        'batch_size': 64,
-        'num_utterances': 5,
-        'num_speakers': 64,  # Speakers per batch
-        'lr': 1e-4,
-        'epochs': 100,
+        'data_root': args.data_root,
+        'checkpoint_dir': args.checkpoint_dir,
+        'batch_size': args.batch_size,
+        'num_utterances': args.num_utterances,
+        'num_speakers': args.batch_size,
+        'lr': args.lr,
+        'epochs': args.epochs,
         'save_interval': 5,
         'audio': {
             'sample_rate': 16000,
@@ -82,4 +83,14 @@ def train_speaker_encoder():
             }, f"{config['checkpoint_dir']}/se_{epoch+1}.pt")
 
 if __name__ == '__main__':
-    train_speaker_encoder()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_root', type=str, required=True)
+    parser.add_argument('--checkpoint_dir', type=str, required=True)
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--num_utterances', type=int, default=5)
+    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    
+    args = parser.parse_args()
+    
+    train_speaker_encoder(args)
