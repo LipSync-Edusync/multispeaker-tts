@@ -9,6 +9,14 @@ from scipy.io import wavfile
 from librosa.filters import mel as librosa_mel_fn
 from pathlib import Path
 from typing import Optional, Union
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  
+handler = logging.StreamHandler()
+formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 class AudioProcessor:
     # Audio processing module for TTS system handling all audio-related operations
@@ -175,23 +183,38 @@ class AudioProcessor:
     def stft(self, wav: np.ndarray) -> np.ndarray:
         """
         Compute STFT of waveform.
-        
+
         Args:
-            wav: Input waveform
-            
+            wav (np.ndarray): Input waveform
+
         Returns:
-            stft: Complex STFT matrix
+            np.ndarray: Complex STFT matrix
         """
-        if torch.is_tensor(wav):
-            wav = wav.numpy()
+        try:
+            if torch.is_tensor(wav):
+                logger.debug("Input is a torch tensor. Converting to numpy array.")
+                wav = wav.detach().cpu().numpy()
+
+            if not isinstance(wav, np.ndarray):
+                raise TypeError("Input must be a NumPy array or a Torch tensor.")
+
+            logger.debug(f"Computing STFT with n_fft={self.n_fft}, "
+                         f"hop_length={self.hop_length}, win_length={self.win_length}")
             
-        return librosa.stft(
-            wav,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
-            window='hann'
-        )
+            stft_result = librosa.stft(
+                wav,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                win_length=self.win_length,
+                window='hann'
+            )
+            
+            logger.info("STFT computation successful.")
+            return stft_result
+
+        except Exception as e:
+            logger.error(f"Error computing STFT: {e}", exc_info=True)
+            raise
     
     def stft_torch(self, wav: torch.Tensor) -> torch.Tensor:
         """
@@ -225,26 +248,51 @@ class AudioProcessor:
     def melspectrogram(self, wav: np.ndarray) -> np.ndarray:
         """
         Compute mel spectrogram from waveform.
-        
+
         Args:
-            wav: Input waveform
-            
+            wav: Input waveform (1D numpy array)
+
         Returns:
-            mel: Mel spectrogram
+            mel: Mel spectrogram (2D numpy array)
+
+        Raises:
+            ValueError: If the input waveform is not a 1D numpy array
+            RuntimeError: If any step in the processing fails
         """
-        if self.preemphasize:
-            wav = self.preemphasis(wav)
-            
-        # Compute STFT
-        stft = self.stft(wav)
-        magnitude = np.abs(stft)
-        
-        # Compute mel spectrogram
-        mel = np.dot(self.mel_basis, magnitude)
-        mel = self.amp_to_db(mel)
-        mel = self.normalize(mel)
-        
-        return mel
+        try:
+            if not isinstance(wav, np.ndarray) or wav.ndim != 1:
+                raise ValueError("Input waveform must be a 1D numpy array.")
+
+            logger.debug("Starting mel spectrogram computation")
+
+            if self.preemphasize:
+                logger.debug("Applying preemphasis")
+                wav = self.preemphasis(wav)
+
+            # Compute STFT
+            logger.debug("Computing STFT")
+            stft = self.stft(wav)
+            magnitude = np.abs(stft)
+
+            if self.mel_basis.shape[1] != magnitude.shape[0]:
+                raise ValueError(f"mel_basis shape {self.mel_basis.shape} and STFT magnitude shape {magnitude.shape} are incompatible.")
+
+            # Compute mel spectrogram
+            logger.debug("Computing mel spectrogram")
+            mel = np.dot(self.mel_basis, magnitude)
+
+            logger.debug("Converting amplitude to decibels")
+            mel = self.amp_to_db(mel)
+
+            logger.debug("Normalizing mel spectrogram")
+            mel = self.normalize(mel)
+
+            logger.debug("Mel spectrogram computation completed | shape: %s", mel.shape)
+            return mel
+
+        except Exception as e:
+            logger.exception("Error computing mel spectrogram")
+            raise RuntimeError("Failed to compute mel spectrogram") from e
     
     def melspectrogram_torch(self, wav: torch.Tensor) -> torch.Tensor:
         """
