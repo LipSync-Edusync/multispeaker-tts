@@ -3,8 +3,11 @@ import shutil
 from pathlib import Path
 from tqdm import tqdm
 
-VOX_SRC = Path(r"D:\Work\lipsync\multispeaker-tts\datasets\vox1_dev_wav")
-DEST = Path(r"D:\Work\lipsync\multispeaker-tts\datasets\speaker_verification_data")
+TEST_DIR = Path(r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_unrefined/vox1_test_wav/wav")
+TEST_DEST = Path(r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test")
+
+VOX_SRC = TEST_DIR
+DEST = TEST_DEST
 
 DEST.mkdir(parents=True, exist_ok=True)
 

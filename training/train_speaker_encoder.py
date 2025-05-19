@@ -1,11 +1,28 @@
 import torch
+import sys
+import logging
+import os
 import argparse
+import soundfile as sf
 from models import SpeakerEncoder, GE2ELoss
 from data.datasets import SpeakerVerificationDataset
 from torch.utils.data import DataLoader
 from utils.audio import AudioProcessor
 
+def setup_logger():
+    logger = logging.getLogger("SpeakerEncoderTrain")
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    return logger
+
+
 def train_speaker_encoder(args):
+    logger = setup_logger()
+
     # Configuration
     config = {
         'data_root': args.data_root,
@@ -25,62 +42,88 @@ def train_speaker_encoder(args):
         }
     }
 
-    # Initialize
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    ap = AudioProcessor(**config['audio'])
-    model = SpeakerEncoder().to(device)
-    criterion = GE2ELoss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+    # Ensure checkpoint directory exists
+    try:
+        os.makedirs(config['checkpoint_dir'], exist_ok=True)
+        logger.info(f"Using checkpoint directory: {config['checkpoint_dir']}")
+    except Exception as e:
+        logger.error(f"Could not create checkpoint directory: {e}")
+        return
 
-    # Dataset and loader
-    dataset = SpeakerVerificationDataset(
-        config['data_root'],
-        ap,
-        num_utterances=config['num_utterances']
-    )
-    loader = DataLoader(dataset, batch_size=config['num_speakers'], shuffle=True)
+    # Initialize components
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+    try:
+        ap = AudioProcessor(**config['audio'])
+        model = SpeakerEncoder().to(device)
+        criterion = GE2ELoss().to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+    except Exception as e:
+        logger.error(f"Initialization error: {e}")
+        return
+
+    # Load dataset
+    try:
+        logger.info(f"Loading dataset from {config['data_root']}")
+        if not os.path.exists(config['data_root']):
+            raise FileNotFoundError(f"Data root {config['data_root']} does not exist.")
+        dataset = SpeakerVerificationDataset(
+            config['data_root'], ap, num_utterances=config['num_utterances']
+        )
+        logger.info(f"Loaded dataset with {len(dataset)} samples")
+        loader = DataLoader(dataset, batch_size=config['num_speakers'], shuffle=True)
+    except Exception as e:
+        logger.error(f"Data loading error: {e}")
+        return
 
     # Training loop
     for epoch in range(config['epochs']):
         model.train()
-        total_loss = 0
-        
+        total_loss = 0.0
+        num_batches = 0
+
         for batch in loader:
-            # Prepare batch: [num_speakers, num_utterances, mel_len, n_mels]
-            mels = batch['mel'].to(device)
-            N, M = mels.size(0), mels.size(1)
-            mels = mels.view(N * M, -1, config['audio']['num_mels'])
-            
-            # Forward pass
-            embeddings = model(mels)
-            embeddings = embeddings.view(N, M, -1)
-            
-            # Compute loss
-            loss = criterion(embeddings)
-            
-            # Backward pass
-            optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
-            optimizer.step()
-            
-            total_loss += loss.item()
-        
+            try:
+                mels = batch['mel'].to(device)
+                N, M = mels.size(0), mels.size(1)
+                mels = mels.view(N * M, -1, config['audio']['num_mels'])
+
+                embeddings = model(mels).view(N, M, -1)
+                loss = criterion(embeddings)
+
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+                optimizer.step()
+
+                total_loss += loss.item()
+                
+                num_batches += 1
+            except Exception as e:
+                logger.error(f"Error in batch processing: {e}")
+                continue
+
         scheduler.step()
-        
-        # Logging
-        avg_loss = total_loss / len(loader)
-        print(f"Epoch {epoch+1}, Loss: {avg_loss:.4f}")
-        
+        if num_batches > 0:
+            avg_loss = total_loss / num_batches
+            logger.info(f"Epoch {epoch+1}/{config['epochs']} - Loss: {avg_loss:.4f}")
+        else:
+            logger.warning(f"Epoch {epoch+1}: no successful batches")
+
         # Save checkpoint
         if (epoch + 1) % config['save_interval'] == 0:
-            torch.save({
-                'model': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                'epoch': epoch,
-                'config': config
-            }, f"{config['checkpoint_dir']}/se_{epoch+1}.pt")
+            ckpt_path = os.path.join(config['checkpoint_dir'], f"se_{epoch+1}.pt")
+            try:
+                torch.save({
+                    'model': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'epoch': epoch + 1,
+                    'config': config
+                }, ckpt_path)
+                logger.info(f"Checkpoint saved to {ckpt_path}")
+            except Exception as e:
+                logger.error(f"Failed to save checkpoint: {e}")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -93,4 +136,11 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    train_speaker_encoder(args)
+    try:
+        train_speaker_encoder(args)
+    except KeyboardInterrupt:
+        print("Training interrupted by user. Exiting...")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        sys.exit(1)

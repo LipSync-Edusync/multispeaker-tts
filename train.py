@@ -5,8 +5,8 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
 
-data_root = r"processed/processed_speaker_verification"
-checkpoint_dir = r"speaker_checkpoints"
+data_root = r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test/processed"
+checkpoint_dir = r"checkpoints/speaker_encoder"
 batch_size = "64"
 num_utterances = "5"
 epochs = "100"

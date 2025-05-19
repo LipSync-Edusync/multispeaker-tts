@@ -24,7 +24,7 @@ class AudioProcessor:
                  max_wav_value: float = 32768.0,
                  clip_norm: bool = True,
                  preemphasize: bool = True,
-                 preemphasis: float = 0.97,
+                 preemphasis_v: float = 0.97,
                  min_level_db: float = -100,
                  ref_level_db: float = 20,
                  signal_norm: bool = True,
@@ -46,7 +46,7 @@ class AudioProcessor:
             max_wav_value: Maximum waveform value for normalization
             clip_norm: Clip normalized values to [-1, 1]
             preemphasize: Apply preemphasis
-            preemphasis: Preemphasis coefficient
+            preemphasis_v: Preemphasis coefficient
             min_level_db: Minimum dB value for normalization
             ref_level_db: Reference dB value for normalization
             signal_norm: Normalize audio signal
@@ -64,7 +64,7 @@ class AudioProcessor:
         self.max_wav_value = max_wav_value
         self.clip_norm = clip_norm
         self.preemphasize = preemphasize
-        self.preemphasis = preemphasis
+        self.preemphasis_coeff = preemphasis_v
         self.min_level_db = min_level_db
         self.ref_level_db = ref_level_db
         self.signal_norm = signal_norm
@@ -158,7 +158,7 @@ class AudioProcessor:
         Returns:
             preemphasized_wav: Processed waveform
         """
-        return signal.lfilter([1, -self.preemphasis], [1], wav)
+        return signal.lfilter([1, -self.preemphasis_coeff], [1], wav)
     
     def inv_preemphasis(self, wav: np.ndarray) -> np.ndarray:
         """
@@ -170,7 +170,7 @@ class AudioProcessor:
         Returns:
             original_wav: Waveform with preemphasis removed
         """
-        return signal.lfilter([1], [1, -self.preemphasis], wav)
+        return signal.lfilter([1], [1, -self.preemphasis_coeff], wav)
     
     def stft(self, wav: np.ndarray) -> np.ndarray:
         """
@@ -259,7 +259,7 @@ class AudioProcessor:
         if self.preemphasize:
             wav = torch.cat([
                 wav[:, 0:1],
-                wav[:, 1:] - self.preemphasis * wav[:, :-1]
+                wav[:, 1:] - self.preemphasis_coeff * wav[:, :-1]
             ], dim=1)
             
         # Compute STFT
