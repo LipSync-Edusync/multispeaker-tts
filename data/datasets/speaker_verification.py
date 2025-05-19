@@ -17,7 +17,7 @@ from __init__ import logger
 class SpeakerVerificationDataset(Dataset):
     def __init__(self, data_root: str, audio_processor, num_speakers: int = 64, 
                  num_utterances: int = 5, min_duration: float = 1.0, 
-                 max_duration: float = 3.0):
+                 max_duration: float = 10.0):
         """
         Args:
             data_root: Root directory containing speaker directories
@@ -46,10 +46,12 @@ class SpeakerVerificationDataset(Dataset):
             utt_files = []
             for f in os.listdir(speaker_path):
                 if f.endswith('.wav'):
+                    logger.debug(f"passed: {f}")
                     path = os.path.join(speaker_path, f)
                     duration = self._get_duration(path)
                     if min_duration <= duration <= max_duration:
                         utt_files.append(path)
+                        logger.debug(f"Added {path} with duration {duration:.2f}s")
             
             if len(utt_files) >= num_utterances:
                 self.speakers.append(speaker)

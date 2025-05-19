@@ -1,6 +1,7 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+logging.disable(logging.DEBUG)
 
 def setup_project_logger(
     name="multispeaker_tts",
@@ -12,7 +13,7 @@ def setup_project_logger(
     logger.propagate = False
 
     if logger.handlers:
-        return logger  
+        return logger
 
     formatter = logging.Formatter(
         "[%(asctime)s] %(levelname)s [%(filename)s:%(lineno)d - %(funcName)s] - %(message)s",
@@ -31,3 +32,35 @@ def setup_project_logger(
     return logger
 
 logger = setup_project_logger()
+
+TRACE = 5
+VERBOSE = 15
+NOTICE = 25
+MSG = 35
+
+logging.addLevelName(TRACE, "TRACE")
+logging.addLevelName(VERBOSE, "VERBOSE")
+logging.addLevelName(NOTICE, "NOTICE")
+logging.addLevelName(MSG, "MSG")
+
+def trace(self, message, *args, **kws):
+    if self.isEnabledFor(TRACE):
+        self._log(TRACE, message, args, **kws)
+logging.Logger.trace = trace
+
+def verbose(self, message, *args, **kws):
+    if self.isEnabledFor(VERBOSE):
+        self._log(VERBOSE, message, args, **kws)
+logging.Logger.verbose = verbose
+
+def notice(self, message, *args, **kws):
+    if self.isEnabledFor(NOTICE):
+        self._log(NOTICE, message, args, **kws)
+logging.Logger.notice = notice
+
+def msg(self, message, *args, **kws):
+    if self.isEnabledFor(MSG):
+        self._log(MSG, message, args, **kws)
+logging.Logger.msg = msg
+
+

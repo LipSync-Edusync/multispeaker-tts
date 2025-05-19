@@ -1,11 +1,13 @@
 import sys
 import subprocess
 from pathlib import Path
+import logging
 
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
 
-data_root = r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test/processed/mels"
+
+data_root = r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test"
 checkpoint_dir = r"checkpoints/speaker_encoder"
 num_speakers = "4" # N
 num_utterances = "5" # M
