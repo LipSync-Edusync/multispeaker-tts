@@ -98,6 +98,9 @@ def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
         except Exception as e:
             logger.error(f"Error processing entry {idx} ({item.get('wav_path', 'unknown')}): {e}")
             skipped_count += 1
+            if skipped_count > 10:
+                logger.error("Too many errors encountered, stopping processing.")
+                break
             continue
 
     if not processed_metadata:

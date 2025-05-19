@@ -1,3 +1,21 @@
+# PyTorch with CUDA 12.1 wheels from PyTorch index
+# (Note: This requires pip install with --extra-index-url or --index-url)
+torch==2.1.0+cu121
+torchvision==0.15.2+cu121
+torchaudio==2.0.2+cu121
+
+numpy
+scipy
+pandas
+matplotlib
+
+pylint
+black
+autopep8
+
+scikit-learn
+tensorboard
+
 tqdm
 
 # ui
@@ -7,11 +25,6 @@ streamlit-audiorec==0.1.0
 # audio
 soundfile==0.12.1
 numpy==1.26.4
-
-# tts model
-torch>=2.0.0
-torchaudio>=2.0.0
-scipy>=1.10.0
 
 # tacotron2
 librosa>=0.10.0

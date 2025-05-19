@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from pathlib import Path
 from typing import List, Dict, Tuple
+import soundfile as sf
 
 class SpeakerVerificationDataset(Dataset):
     # Dataset for speaker verification/encoder training
