@@ -7,9 +7,10 @@ from typing import Dict, List
 import soundfile as sf
 import logging
 import sys
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+sys.path.append(str(Path(__file__).parent.parent))
+from __init__ import logger
 
 
 
@@ -30,11 +31,11 @@ class SpeakerVerificationDataset(Dataset):
         self.num_speakers = num_speakers
         self.num_utterances = num_utterances
         
-        logger.debug(f" === reach test ===")
         
         # Collect all valid speakers and their utterances
         self.speakers = []
         self.speaker_to_utts = {}
+        logger.debug(f" === reach test ===")
         
         for speaker in os.listdir(data_root):
             speaker_path = os.path.join(data_root, speaker)

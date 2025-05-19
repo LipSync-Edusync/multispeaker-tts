@@ -1,5 +1,6 @@
 import torch
 import sys
+from pathlib import Path
 import logging
 import os
 import argparse
@@ -9,10 +10,12 @@ from data.datasets import SpeakerVerificationDataset
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler
 from utils.audio import AudioProcessor
-from 
+
+sys.path.append(str(Path(__file__).parent.parent))
+from __init__ import logger
 
 def train_speaker_encoder(args):
-    logger = setup_logger()
+    # logger = setup_logger()
 
     # Configuration
     config = {
