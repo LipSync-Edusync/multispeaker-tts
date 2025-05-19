@@ -104,11 +104,13 @@ def train_speaker_encoder(args):
                 N, M = mels.size(0), mels.size(1)
                 if N < 2:
                     logger.warning(f"Number of Speakers {N} is less than 2, skipping batch.")
-                    raise ValueError("Speakers size is less than 2")
+                    # raise ValueError("Speakers size is less than 2")
+                    exit(0)
                 
                 if M < 3:
                     logger.warning(f"Number of utterances {M} is less than 3, skipping batch.")
-                    raise ValueError("Number of utterances is less than 3")
+                    # raise ValueError("Number of utterances is less than 3")
+                    exit(0)
                 
                 mels = mels.view(N * M, -1, config['audio']['num_mels'])
 
@@ -137,7 +139,8 @@ def train_speaker_encoder(args):
                 num_batches += 1
             except Exception as e:
                 logger.error(f"Error in batch processing: {e}")
-                continue
+                # continue
+                exit(0)
 
         scheduler.step()
         if num_batches > 0:

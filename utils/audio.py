@@ -10,13 +10,11 @@ from librosa.filters import mel as librosa_mel_fn
 from pathlib import Path
 from typing import Optional, Union
 import logging
+import sys
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  
-handler = logging.StreamHandler()
-formatter = logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+sys.path.append(str(Path(__file__).parent.parent))
+from __init__ import logger
 
 class AudioProcessor:
     # Audio processing module for TTS system handling all audio-related operations
@@ -209,7 +207,7 @@ class AudioProcessor:
                 window='hann'
             )
             
-            logger.info("STFT computation successful.")
+            logger.debug(f"STFT computed | shape: {stft_result.shape}")
             return stft_result
 
         except Exception as e:
