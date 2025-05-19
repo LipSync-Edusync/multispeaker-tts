@@ -3,63 +3,72 @@ import random
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from typing import Dict, List
+import soundfile as sf
+import logging
+import sys
 from pathlib import Path
-from typing import List, Dict, Tuple
+
+sys.path.append(str(Path(__file__).parent.parent))
+from __init__ import logger
+
+
 
 class SpeakerVerificationDataset(Dataset):
-    # Dataset for speaker verification/encoder training
-    
-    def __init__(self, data_root: str, audio_processor, num_utterances: int = 5, 
-                 min_duration: float = 1.6, max_duration: float = 3.0):
+    def __init__(self, data_root: str, audio_processor, num_speakers: int = 64, 
+                 num_utterances: int = 5, min_duration: float = 1.0, 
+                 max_duration: float = 10.0):
         """
         Args:
             data_root: Root directory containing speaker directories
             audio_processor: Audio processor instance
-            num_utterances: Number of utterances per speaker to include in each batch
-            min_duration: Minimum duration of utterances in seconds
-            max_duration: Maximum duration of utterances in seconds
+            num_speakers: Number of speakers per batch (N)
+            num_utterances: Number of utterances per speaker (M)
+            min_duration: Minimum duration in seconds
+            max_duration: Maximum duration in seconds
         """
         self.ap = audio_processor
+        self.num_speakers = num_speakers
         self.num_utterances = num_utterances
-        self.min_duration = min_duration
-        self.max_duration = max_duration
         
-        # Collect speaker data
+        
+        # Collect all valid speakers and their utterances
         self.speakers = []
         self.speaker_to_utts = {}
+        logger.debug(f" === reach test ===")
         
-        speaker_dirs = [d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d))]
-        for speaker in speaker_dirs:
+        for speaker in os.listdir(data_root):
             speaker_path = os.path.join(data_root, speaker)
-            utt_files = [f for f in os.listdir(speaker_path) if f.endswith('.wav')]
+            if not os.path.isdir(speaker_path):
+                logger.debug(f"Skipping {speaker_path}, not in directory")
+                continue
+                
+            utt_files = []
+            for f in os.listdir(speaker_path):
+                if f.endswith('.wav'):
+                    logger.debug(f"passed: {f}")
+                    path = os.path.join(speaker_path, f)
+                    duration = self._get_duration(path)
+                    if min_duration <= duration <= max_duration:
+                        utt_files.append(path)
+                        logger.debug(f"Added {path} with duration {duration:.2f}s")
             
             if len(utt_files) >= num_utterances:
                 self.speakers.append(speaker)
-                self.speaker_to_utts[speaker] = [
-                    os.path.join(speaker_path, f) for f in utt_files
-                ]
+                self.speaker_to_utts[speaker] = utt_files
         
-        # Calculate lengths for bucketing
-        self.utt_lengths = {}
-        for speaker, utts in self.speaker_to_utts.items():
-            for utt in utts:
-                duration = self._get_duration(utt)
-                if self.min_duration <= duration <= self.max_duration:
-                    bucket = int(duration * 100)  # Bucket by 10ms
-                    if bucket not in self.utt_lengths:
-                        self.utt_lengths[bucket] = []
-                    self.utt_lengths[bucket].append((speaker, utt))
-    
+        if len(self.speakers) < num_speakers:
+            raise ValueError(f"Only {len(self.speakers)} speakers meet requirements, but need {num_speakers}")
+
     def _get_duration(self, wav_path: str) -> float:
-        # Get duration of audio file in seconds
         with sf.SoundFile(wav_path) as f:
             return len(f) / f.samplerate
-    
+
     def __len__(self) -> int:
-        return len(self.speakers)
-    
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        # Get a batch of utterances from the same speaker
+        return len(self.speakers) // self.num_speakers
+
+    def __getitem__(self, idx: int) -> Dict[str, List[np.ndarray]]:
+        """Returns utterances from one speaker"""
         speaker = self.speakers[idx]
         utt_paths = random.sample(self.speaker_to_utts[speaker], self.num_utterances)
         
@@ -69,36 +78,38 @@ class SpeakerVerificationDataset(Dataset):
             mel = self.ap.melspectrogram(wav)
             mels.append(mel)
         
-        # Pad to max length in batch
-        max_len = max(m.shape[1] for m in mels)
-        padded_mels = np.stack([
-            np.pad(m, ((0, 0), (0, max_len - m.shape[1])), 
-            mode='constant'
-        ) for m in mels])
-        
         return {
-            'mel': torch.FloatTensor(padded_mels),
+            'mels': mels,  # List of melspectrograms
             'speaker': speaker
         }
-    
-    def get_triplet(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # Get anchor, positive, negative samples for triplet loss
-        # Anchor and positive from same speaker
+
+    def collate_fn(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
+        """
+        Collate function that creates proper N x M batch for GE2E loss
+        Returns:
+            Dictionary with:
+            - mels: Tensor of shape (N*M, T, n_mels)
+            - labels: Speaker IDs (N,)
+        """
+        # First pad all mels to max length in batch
+        all_mels = [mel for item in batch for mel in item['mels']]
+        max_len = max(m.shape[1] for m in all_mels)
         
-        anchor_speaker = random.choice(self.speakers)
-        anchor_path, pos_path = random.sample(self.speaker_to_utts[anchor_speaker], 2)
+        padded_mels = []
+        for item in batch:
+            for mel in item['mels']:
+                pad_amount = max_len - mel.shape[1]
+                padded = np.pad(mel, ((0, 0), (0, pad_amount)), 
+                             mode='constant')
+                padded_mels.append(padded)
         
-        # Negative from different speaker
-        neg_speaker = random.choice([s for s in self.speakers if s != anchor_speaker])
-        neg_path = random.choice(self.speaker_to_utts[neg_speaker])
+        # Stack all utterances (N*M, n_mels, T)
+        mels_tensor = torch.FloatTensor(np.stack(padded_mels))
         
-        # Process audio
-        anchor_mel = self.ap.melspectrogram(self.ap.load_wav(anchor_path))
-        pos_mel = self.ap.melspectrogram(self.ap.load_wav(pos_path))
-        neg_mel = self.ap.melspectrogram(self.ap.load_wav(neg_path))
+        # Create speaker labels
+        labels = [item['speaker'] for item in batch]
         
-        return (
-            torch.FloatTensor(anchor_mel),
-            torch.FloatTensor(pos_mel),
-            torch.FloatTensor(neg_mel)
-        )
+        return {
+            'mels': mels_tensor,  # (N*M, n_mels, T)
+            'labels': labels     # (N,)
+        }
