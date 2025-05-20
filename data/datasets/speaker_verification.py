@@ -46,12 +46,12 @@ class SpeakerVerificationDataset(Dataset):
             utt_files = []
             for f in os.listdir(speaker_path):
                 if f.endswith('.wav'):
-                    logger.debug(f"passed: {f}")
+                    # logger.debug(f"passed: {f}")
                     path = os.path.join(speaker_path, f)
                     duration = self._get_duration(path)
                     if min_duration <= duration <= max_duration:
                         utt_files.append(path)
-                        logger.debug(f"Added {path} with duration {duration:.2f}s")
+                        # logger.debug(f"Added {path} with duration {duration:.2f}s")
             
             if len(utt_files) >= num_utterances:
                 self.speakers.append(speaker)
