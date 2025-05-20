@@ -100,7 +100,7 @@ def train_speaker_encoder(args):
 
         for batch in loader:
             try:
-                mels = batch['mel'].to(device)
+                mels = batch['mels'].to(device)
                 N, M = mels.size(0), mels.size(1)
                 if N < 2:
                     logger.warning(f"Number of Speakers {N} is less than 2, skipping batch.")
