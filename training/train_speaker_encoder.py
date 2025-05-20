@@ -49,7 +49,7 @@ def train_speaker_encoder(args):
     logger.info(f"Using device: {device}")
     try:
         ap = AudioProcessor(**config['audio'])
-        model = SpeakerEncoder().to(device)
+        model = SpeakerEncoder(config['audio']).to(device)
         criterion = GE2ELoss().to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
@@ -101,7 +101,11 @@ def train_speaker_encoder(args):
         for batch in loader:
             try:
                 mels = batch['mels'].to(device)
+                labels = batch['labels'].to(device)
+                logger.msg2("+++ reach test 2 +++") # 1
                 N, M = mels.size(0), mels.size(1)
+                logger.msg2("+++ reach test 2 +++")
+                
                 if N < 2:
                     logger.warning(f"Number of Speakers {N} is less than 2, skipping batch.")
                     # raise ValueError("Speakers size is less than 2")
@@ -111,11 +115,21 @@ def train_speaker_encoder(args):
                     logger.warning(f"Number of utterances {M} is less than 3, skipping batch.")
                     # raise ValueError("Number of utterances is less than 3")
                     exit(0)
+                    
+                N = len(mels)
+                M = len(labels) // N
                 
-                mels = mels.view(N * M, -1, config['audio']['num_mels'])
-
-                embeddings = model(mels).view(N, M, -1)
+                    
+                logger.msg2(f"+++ reach test 2 +++ | N: {N} | M: {M}")
                 
+                # mels = mels.view(N * M, -1, config['audio']['num_mels'])
+                # mels = mels.permute(0, 2, 1)
+                logger.msg2("+++ reach test 2 +++")
+                embeddings = model(mels.float())
+                logger.msg2("+++ reach test 2 +++")
+                logger.debug(f"Embeddings shape: {embeddings.shape}")
+                embeddings = embeddings.view(N, M, -1)
+                logger.msg2("+++ reach test 2 +++")
                 # test
                 logger.debug(f"Batch size: {embeddings.size()}")
                 logger.debug(f"Embeddings shape: {embeddings.shape}")
@@ -141,6 +155,7 @@ def train_speaker_encoder(args):
                 logger.error(f"Error in batch processing: {e}")
                 # continue
                 exit(0)
+            logger.debug(f"Batch {num_batches+1}/{len(loader)} processed.")
 
         scheduler.step()
         if num_batches > 0:
