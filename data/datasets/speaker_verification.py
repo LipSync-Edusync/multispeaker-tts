@@ -8,6 +8,7 @@ import soundfile as sf
 import logging
 import sys
 from pathlib import Path
+from torch.nn.utils.rnn import pad_sequence
 
 sys.path.append(str(Path(__file__).parent.parent))
 from __init__ import logger
@@ -17,7 +18,7 @@ from __init__ import logger
 class SpeakerVerificationDataset(Dataset):
     def __init__(self, data_root: str, audio_processor, num_speakers: int = 64, 
                  num_utterances: int = 5, min_duration: float = 1.0, 
-                 max_duration: float = 10.0):
+                 max_duration: float = 30.0):
         """
         Args:
             data_root: Root directory containing speaker directories
@@ -30,17 +31,19 @@ class SpeakerVerificationDataset(Dataset):
         self.ap = audio_processor
         self.num_speakers = num_speakers
         self.num_utterances = num_utterances
+        self.min_duration = min_duration
+        self.max_duration = max_duration
         
         
         # Collect all valid speakers and their utterances
         self.speakers = []
         self.speaker_to_utts = {}
-        logger.debug(f" === reach test ===")
+        logger.msg2(f" === reach test ===")
         
         for speaker in os.listdir(data_root):
             speaker_path = os.path.join(data_root, speaker)
             if not os.path.isdir(speaker_path):
-                logger.debug(f"Skipping {speaker_path}, not in directory")
+                logger.msg2(f"Skipping {speaker_path}, not in directory")
                 continue
                 
             utt_files = []
@@ -61,8 +64,13 @@ class SpeakerVerificationDataset(Dataset):
             raise ValueError(f"Only {len(self.speakers)} speakers meet requirements, but need {num_speakers}")
 
     def _get_duration(self, wav_path: str) -> float:
-        with sf.SoundFile(wav_path) as f:
-            return len(f) / f.samplerate
+        """Get duration of a wav file in seconds"""
+        try:
+            with sf.SoundFile(wav_path) as f:
+                return len(f) / f.samplerate
+        except Exception as e:
+            logger.error(f"Error reading {wav_path}: {e}")
+            return 0.0            
 
     def __len__(self) -> int:
         return len(self.speakers) // self.num_speakers
@@ -75,9 +83,11 @@ class SpeakerVerificationDataset(Dataset):
         mels = []
         for path in utt_paths:
             wav = self.ap.load_wav(path)
+            logger.msg2(f"Loaded {path} with shape {wav.shape}")
             mel = self.ap.melspectrogram(wav)
+            logger.msg2(f"Mel shape: {mel.shape}")
             mels.append(mel)
-        
+            logger.msg2(f"Mel shape: {mel.shape}")
         return {
             'mels': mels,  # List of melspectrograms
             'speaker': speaker
@@ -91,25 +101,51 @@ class SpeakerVerificationDataset(Dataset):
             - mels: Tensor of shape (N*M, T, n_mels)
             - labels: Speaker IDs (N,)
         """
-        # First pad all mels to max length in batch
-        all_mels = [mel for item in batch for mel in item['mels']]
-        max_len = max(m.shape[1] for m in all_mels)
         
-        padded_mels = []
+        # collect mels and speaker labels from batch
+        mels_list = []
+        labels = []
         for item in batch:
-            for mel in item['mels']:
-                pad_amount = max_len - mel.shape[1]
-                padded = np.pad(mel, ((0, 0), (0, pad_amount)), 
-                             mode='constant')
-                padded_mels.append(padded)
+            mels_list.extend(item['mels']) # list: (T, num_mels)
+            labels.append(item['speaker']) # N speakers, M utterances, each
+
+            
+        # pad all mels to max length in batch
+        mels_padded = pad_sequence(
+            [torch.from_numpy(mel).transpose(0, 1) for mel in mels_list],
+            batch_first=True,
+            padding_value=0.0
+        ).transpose(1, 2)  # (N*M, n_mels, T)
+        logger.msg2(f"mels_padded shape: {mels_padded.shape}")
         
-        # Stack all utterances (N*M, n_mels, T)
-        mels_tensor = torch.FloatTensor(np.stack(padded_mels))
+        unique_speakers = list(set(labels))
+        speaker_to_label = {speaker: idx for idx, speaker in enumerate(unique_speakers)}
+        logger.msg2(f"Speaker to label mapping: {speaker_to_label}")
         
-        # Create speaker labels
-        labels = [item['speaker'] for item in batch]
+        # IDs -> numeric labels
+        labels_tensor = torch.tensor(
+            [speaker_to_label[label] for label in labels], dtype=torch.long
+        )
+        logger.msg2(f"labels_tensor shape: {labels_tensor.shape}")
+        # all_mels = [mel for item in batch for mel in item['mels']]
+        # max_len = max(m.shape[1] for m in all_mels)
+        
+        
+        # padded_mels = []
+        # for item in batch:
+        #     for mel in item['mels']:
+        #         pad_amount = max_len - mel.shape[1]
+        #         padded = np.pad(mel, ((0, 0), (0, pad_amount)), 
+        #                      mode='constant')
+        #         padded_mels.append(padded)
+        
+        # # Stack all utterances (N*M, n_mels, T)
+        # mels_tensor = torch.FloatTensor(np.stack(padded_mels))
+        
+        # # Create speaker labels
+        # labels = [item['speaker'] for item in batch]
         
         return {
-            'mels': mels_tensor,  # (N*M, n_mels, T)
-            'labels': labels     # (N,)
+            'mels': mels_padded,  # (N*M, n_mels, T)
+            'labels': labels_tensor     
         }
