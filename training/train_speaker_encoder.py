@@ -100,41 +100,33 @@ def train_speaker_encoder(args):
 
         for batch in loader:
             try:
-                mels = batch['mels'].to(device)
-                labels = batch['labels'].to(device)
-                logger.msg2("+++ reach test 2 +++") # 1
-                N, M = mels.size(0), mels.size(1)
-                logger.msg2("+++ reach test 2 +++")
+                mels = batch['mels'].to(device)  # shape: (N*M, n_mels, T)
+                labels = batch['labels'].to(device)  # shape: (N,)
                 
-                if N < 2:
-                    logger.warning(f"Number of Speakers {N} is less than 2, skipping batch.")
-                    # raise ValueError("Speakers size is less than 2")
-                    exit(0)
+                logger.msg2(f"Batch size: {mels.size(0)} | Labels: {labels}")   
                 
-                if M < 3:
-                    logger.warning(f"Number of utterances {M} is less than 3, skipping batch.")
-                    # raise ValueError("Number of utterances is less than 3")
-                    exit(0)
+                N = len(labels)  # Number of speakers (4)
+                M = mels.size(0) // N  # Utterances per speaker (5)
+                
+                logger.msg2(f"N : {N} | M: {M}")
+                
+                if mels.size(0) != N * M:
+                    raise ValueError(f"Batch size mismatch: {mels.size(0)} != {N}*{M}")
                     
-                N = len(mels)
-                M = len(labels) // N
+                # input shape (N*M, n_mels, T)
+                embeddings = model(mels.float())  # output shape: (N*M, embedding_dim)
+                logger.msg2(f"Embeddings shape: {embeddings.shape}")
                 
-                    
-                logger.msg2(f"+++ reach test 2 +++ | N: {N} | M: {M}")
-                
-                # mels = mels.view(N * M, -1, config['audio']['num_mels'])
-                # mels = mels.permute(0, 2, 1)
-                logger.msg2("+++ reach test 2 +++")
-                embeddings = model(mels.float())
-                logger.msg2("+++ reach test 2 +++")
-                logger.debug(f"Embeddings shape: {embeddings.shape}")
+                # Reshape for GE2E loss: (N, M, embedding_dim)
                 embeddings = embeddings.view(N, M, -1)
-                logger.msg2("+++ reach test 2 +++")
-                # test
-                logger.debug(f"Batch size: {embeddings.size()}")
-                logger.debug(f"Embeddings shape: {embeddings.shape}")
+                logger.msg2(f"Reshaped embeddings: {embeddings.shape}")
                 
+                # Calculate loss
                 loss = criterion(embeddings)
+                logger.msg2(f"Loss shape: {loss.shape}")
+                
+                if loss is None:
+                    raise ValueError("Loss is None")
                 
                 # test
                 logger.debug(f"Loss: {loss.item()}")
