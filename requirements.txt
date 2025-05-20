@@ -1,6 +1,6 @@
 # PyTorch with CUDA 12.1 wheels from PyTorch index
 # (Note: This requires pip install with --extra-index-url or --index-url)
-torch==2.1.0+cu121
+torch==2.7.0
 torchvision==0.15.2+cu121
 torchaudio==2.0.2+cu121
 
