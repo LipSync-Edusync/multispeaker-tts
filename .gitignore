@@ -18,6 +18,7 @@ env/
 venv/
 ENV/
 env.bak/
+myenv1/
 
 # System-specific files
 .DS_Store

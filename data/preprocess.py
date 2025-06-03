@@ -33,35 +33,68 @@ def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
     
     # Process each audio file
     processed_metadata = []
-    for item in tqdm(metadata, desc="Processing dataset"):
-        wav_path = os.path.join(data_root, item['wav_path'])
-        if not os.path.exists(wav_path):
+    skipped_count = 0
+
+    # process each audio entry
+    for idx, item in enumerate(tqdm(metadata, desc="Processing dataset")):
+        try:
+            wav_path = os.path.join(data_root, item['wav_path'])
+            if not os.path.isfile(wav_path):
+                logger.warning(f"Missing wav file at {wav_path}, skipping entry {idx}")
+                skipped_count += 1
+                continue
+
+            # Load audio
+            wav = audio_processor.load_wav(wav_path)
+            if wav is None or len(wav) == 0:
+                logger.warning(f"Empty or corrupted audio file at {wav_path}, skipping entry {idx}")
+                skipped_count += 1
+                continue
+
+            # Generate mel spectrogram
+            mel = audio_processor.melspectrogram(wav)
+            if mel is None or mel.size == 0:
+                logger.warning(f"Failed to generate mel for {wav_path}, skipping entry {idx}")
+                skipped_count += 1
+                continue
+
+            base_name = os.path.splitext(os.path.basename(wav_path))[0]
+            mel_path = os.path.join(mel_dir, base_name + '.npy')
+            wav_path_out = os.path.join(wav_dir, base_name + '.wav')
+
+            # Save mel and wav
+            np.save(mel_path, mel)
+            audio_processor.save_wav(wav, wav_path_out)
+
+            processed_metadata.append({
+                'mel_path': mel_path,
+                'wav_path': wav_path_out,
+                'text': item['text'],
+                'speaker': item['speaker']
+            })
+        except Exception as e:
+            logger.error(f"Error processing entry {idx} ({item.get('wav_path', 'unknown')}): {e}")
+            skipped_count += 1
+            if skipped_count > 10:
+                logger.error("Too many errors encountered, stopping processing.")
+                break
             continue
-        
-        # Load and process audio
-        wav = audio_processor.load_wav(wav_path)
-        mel = audio_processor.melspectrogram(wav)
-        
-        # Save processed files
-        base_name = os.path.splitext(os.path.basename(wav_path))[0]
-        mel_path = os.path.join(mel_dir, base_name + '.npy')
-        wav_path_out = os.path.join(wav_dir, base_name + '.wav')
-        
-        np.save(mel_path, mel)
-        audio_processor.save_wav(wav, wav_path_out)
-        
-        # Update metadata
-        processed_metadata.append({
-            'mel_path': mel_path,
-            'wav_path': wav_path_out,
-            'text': item['text'],
-            'speaker': item['speaker']
-        })
-    
-    # Save processed metadata
-    with open(os.path.join(output_dir, 'metadata_processed.csv'), 'w') as f:
-        for item in processed_metadata:
-            f.write(f"{item['mel_path']}|{item['text']}|{item['speaker']}\n")
+
+    if not processed_metadata:
+        raise RuntimeError("No valid audio files were processed. Check your dataset and preprocessing parameters.")
+
+    # Save processed metadata CSV
+    processed_metadata_path = os.path.join(output_dir, 'metadata_processed.csv')
+    try:
+        with open(processed_metadata_path, 'w') as f:
+            for item in processed_metadata:
+                f.write(f"{item['mel_path']}|{item['text']}|{item['speaker']}\n")
+        logger.info(f"Saved processed metadata to {processed_metadata_path}")
+    except Exception as e:
+        logger.error(f"Failed to save processed metadata CSV: {e}")
+        raise
+
+    logger.info(f"Preprocessing completed. {len(processed_metadata)} files processed, {skipped_count} files skipped.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

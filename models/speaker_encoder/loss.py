@@ -35,7 +35,10 @@ class GE2ELoss(nn.Module):
         
         # loss
         loss = F.cross_entropy(sim_matrix, labels)
-        return loss
+        return loss.item()
+    
+   
+
 
 
         
