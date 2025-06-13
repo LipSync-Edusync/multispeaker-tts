@@ -1,60 +1,37 @@
+# data/preprocess.py
 import os
 import argparse
 import json
 from pathlib import Path
 from tqdm import tqdm
 from data.datasets.utils import create_speaker_mapping, load_metadata
+from data.datasets.tts_dataset import TTSDataset
 from utils import AudioProcessor
 import numpy as np
-import logging
 
 def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
-    logger = logging.getLogger("preprocess")
-    logger.info(f"Starting preprocessing: data_root={data_root}, output_dir={output_dir}")
-
-    # val
-    if not os.path.isdir(data_root):
-        raise NotADirectoryError(f"Data root directory does not exist: {data_root}")
-
-    # create o/p dir
+    # Preprocess TTS dataset and save processed files
     os.makedirs(output_dir, exist_ok=True)
-    logger.info(f"Output directory ready at: {output_dir}")
-
-    # speaker mapping
-    try:
-        speaker_mapping = create_speaker_mapping(data_root)
-        if not speaker_mapping:
-            logger.warning("Speaker mapping is empty. Check your data_root contents.")
-        with open(os.path.join(output_dir, 'speakers.json'), 'w') as f:
-            json.dump(speaker_mapping, f, indent=2)
-        logger.info(f"Saved speaker mapping to {os.path.join(output_dir, 'speakers.json')}")
-    except Exception as e:
-        logger.error(f"Failed to create speaker mapping: {e}")
-        raise
-
-    # metadata file
+    
+    # Create speaker mapping
+    speaker_mapping = create_speaker_mapping(data_root)
+    with open(os.path.join(output_dir, 'speakers.json'), 'w') as f:
+        json.dump(speaker_mapping, f)
+    
+    # Process metadata
     metadata_path = os.path.join(data_root, 'metadata.csv')
-    if not os.path.isfile(metadata_path):
+    if not os.path.exists(metadata_path):
         raise FileNotFoundError(f"Metadata file not found at {metadata_path}")
-
-    # load metadata
-    try:
-        metadata = load_metadata(metadata_path)
-    except Exception as e:
-        logger.error(f"Failed to load metadata from {metadata_path}: {e}")
-        raise
-
-    if not metadata:
-        raise ValueError("Metadata file is empty or invalid.")
-
-    # o/p dirs for mel and wav files
+    
+    metadata = load_metadata(metadata_path)
+    
+    # Create output directories
     mel_dir = os.path.join(output_dir, 'mels')
     wav_dir = os.path.join(output_dir, 'wavs')
     os.makedirs(mel_dir, exist_ok=True)
     os.makedirs(wav_dir, exist_ok=True)
-    logger.info(f"Created mel spectrogram dir: {mel_dir}")
-    logger.info(f"Created wav dir: {wav_dir}")
-
+    
+    # Process each audio file
     processed_metadata = []
     skipped_count = 0
 
@@ -98,6 +75,9 @@ def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
         except Exception as e:
             logger.error(f"Error processing entry {idx} ({item.get('wav_path', 'unknown')}): {e}")
             skipped_count += 1
+            if skipped_count > 10:
+                logger.error("Too many errors encountered, stopping processing.")
+                break
             continue
 
     if not processed_metadata:
@@ -117,32 +97,24 @@ def preprocess_dataset(data_root: str, output_dir: str, audio_processor):
     logger.info(f"Preprocessing completed. {len(processed_metadata)} files processed, {skipped_count} files skipped.")
 
 if __name__ == '__main__':
-    import sys
-
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='[%(asctime)s][%(levelname)s] %(message)s',
-        handlers=[logging.StreamHandler(sys.stdout)]
-    )
-    logger = logging.getLogger("preprocess_main")
-
-    parser = argparse.ArgumentParser(description="Preprocess TTS dataset")
-    parser.add_argument('--data_root', type=str, required=True, help='Root directory of raw dataset')
-    parser.add_argument('--output_dir', type=str, required=True, help='Directory to save processed data')
-    parser.add_argument('--sample_rate', type=int, default=22050, help='Target sample rate')
-    parser.add_argument('--n_fft', type=int, default=1024, help='FFT window size')
-    parser.add_argument('--hop_length', type=int, default=256, help='Hop length for STFT')
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_root', type=str, required=True, 
+                       help='Root directory of raw dataset')
+    parser.add_argument('--output_dir', type=str, required=True,
+                       help='Directory to save processed data')
+    parser.add_argument('--sample_rate', type=int, default=22050,
+                       help='Target sample rate')
+    parser.add_argument('--n_fft', type=int, default=1024,
+                       help='FFT window size')
+    parser.add_argument('--hop_length', type=int, default=256,
+                       help='Hop length for STFT')
     args = parser.parse_args()
-
-    try:
-        ap = AudioProcessor(
-            sample_rate=args.sample_rate,
-            n_fft=args.n_fft,
-            hop_length=args.hop_length
-        )
-        preprocess_dataset(args.data_root, args.output_dir, ap)
-    except Exception as e:
-        logger.error(f"Preprocessing failed: {e}")
-        sys.exit(1)
+    
+    
+    ap = AudioProcessor(
+        sample_rate=args.sample_rate,
+        n_fft=args.n_fft,
+        hop_length=args.hop_length
+    )
+    
+    preprocess_dataset(args.data_root, args.output_dir, ap)

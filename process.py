@@ -5,8 +5,8 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent
 sys.path.insert(0, str(project_root))
 
-data_root = r"D:/work/lipsync/multispeaker-tts/datasets/speaker_verification_data"
-output_dir = r"processed/processed_speaker_verification"
+data_root = r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test"
+output_dir = r"/home/oem/Lipsync-Edusync/datasets/speaker_verification_test/processed"
 
 command = [
     sys.executable, "-m", "data.preprocess",

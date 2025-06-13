@@ -9,6 +9,12 @@ from scipy.io import wavfile
 from librosa.filters import mel as librosa_mel_fn
 from pathlib import Path
 from typing import Optional, Union
+import logging
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
+from __init__ import logger
 
 class AudioProcessor:
     # Audio processing module for TTS system handling all audio-related operations
@@ -24,7 +30,7 @@ class AudioProcessor:
                  max_wav_value: float = 32768.0,
                  clip_norm: bool = True,
                  preemphasize: bool = True,
-                 preemphasis: float = 0.97,
+                 preemphasis_v: float = 0.97,
                  min_level_db: float = -100,
                  ref_level_db: float = 20,
                  signal_norm: bool = True,
@@ -46,7 +52,7 @@ class AudioProcessor:
             max_wav_value: Maximum waveform value for normalization
             clip_norm: Clip normalized values to [-1, 1]
             preemphasize: Apply preemphasis
-            preemphasis: Preemphasis coefficient
+            preemphasis_v: Preemphasis coefficient
             min_level_db: Minimum dB value for normalization
             ref_level_db: Reference dB value for normalization
             signal_norm: Normalize audio signal
@@ -64,7 +70,7 @@ class AudioProcessor:
         self.max_wav_value = max_wav_value
         self.clip_norm = clip_norm
         self.preemphasize = preemphasize
-        self.preemphasis = preemphasis
+        self.preemphasis_coeff = preemphasis_v
         self.min_level_db = min_level_db
         self.ref_level_db = ref_level_db
         self.signal_norm = signal_norm
@@ -158,7 +164,7 @@ class AudioProcessor:
         Returns:
             preemphasized_wav: Processed waveform
         """
-        return signal.lfilter([1, -self.preemphasis], [1], wav)
+        return signal.lfilter([1, -self.preemphasis_coeff], [1], wav)
     
     def inv_preemphasis(self, wav: np.ndarray) -> np.ndarray:
         """
@@ -170,28 +176,43 @@ class AudioProcessor:
         Returns:
             original_wav: Waveform with preemphasis removed
         """
-        return signal.lfilter([1], [1, -self.preemphasis], wav)
+        return signal.lfilter([1], [1, -self.preemphasis_coeff], wav)
     
     def stft(self, wav: np.ndarray) -> np.ndarray:
         """
         Compute STFT of waveform.
-        
+
         Args:
-            wav: Input waveform
-            
+            wav (np.ndarray): Input waveform
+
         Returns:
-            stft: Complex STFT matrix
+            np.ndarray: Complex STFT matrix
         """
-        if torch.is_tensor(wav):
-            wav = wav.numpy()
+        try:
+            if torch.is_tensor(wav):
+                logger.debug("Input is a torch tensor. Converting to numpy array.")
+                wav = wav.detach().cpu().numpy()
+
+            if not isinstance(wav, np.ndarray):
+                raise TypeError("Input must be a NumPy array or a Torch tensor.")
+
+            logger.debug(f"Computing STFT with n_fft={self.n_fft}, "
+                         f"hop_length={self.hop_length}, win_length={self.win_length}")
             
-        return librosa.stft(
-            wav,
-            n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
-            window='hann'
-        )
+            stft_result = librosa.stft(
+                wav,
+                n_fft=self.n_fft,
+                hop_length=self.hop_length,
+                win_length=self.win_length,
+                window='hann'
+            )
+            
+            logger.debug(f"STFT computed | shape: {stft_result.shape}")
+            return stft_result
+
+        except Exception as e:
+            logger.error(f"Error computing STFT: {e}", exc_info=True)
+            raise
     
     def stft_torch(self, wav: torch.Tensor) -> torch.Tensor:
         """
@@ -225,26 +246,51 @@ class AudioProcessor:
     def melspectrogram(self, wav: np.ndarray) -> np.ndarray:
         """
         Compute mel spectrogram from waveform.
-        
+
         Args:
-            wav: Input waveform
-            
+            wav: Input waveform (1D numpy array)
+
         Returns:
-            mel: Mel spectrogram
+            mel: Mel spectrogram (2D numpy array)
+
+        Raises:
+            ValueError: If the input waveform is not a 1D numpy array
+            RuntimeError: If any step in the processing fails
         """
-        if self.preemphasize:
-            wav = self.preemphasis(wav)
-            
-        # Compute STFT
-        stft = self.stft(wav)
-        magnitude = np.abs(stft)
-        
-        # Compute mel spectrogram
-        mel = np.dot(self.mel_basis, magnitude)
-        mel = self.amp_to_db(mel)
-        mel = self.normalize(mel)
-        
-        return mel
+        try:
+            if not isinstance(wav, np.ndarray) or wav.ndim != 1:
+                raise ValueError("Input waveform must be a 1D numpy array.")
+
+            logger.debug("Starting mel spectrogram computation")
+
+            if self.preemphasize:
+                logger.debug("Applying preemphasis")
+                wav = self.preemphasis(wav)
+
+            # Compute STFT
+            logger.debug("Computing STFT")
+            stft = self.stft(wav)
+            magnitude = np.abs(stft)
+
+            if self.mel_basis.shape[1] != magnitude.shape[0]:
+                raise ValueError(f"mel_basis shape {self.mel_basis.shape} and STFT magnitude shape {magnitude.shape} are incompatible.")
+
+            # Compute mel spectrogram
+            logger.debug("Computing mel spectrogram")
+            mel = np.dot(self.mel_basis, magnitude)
+
+            logger.debug("Converting amplitude to decibels")
+            mel = self.amp_to_db(mel)
+
+            logger.debug("Normalizing mel spectrogram")
+            mel = self.normalize(mel)
+
+            logger.debug("Mel spectrogram computation completed | shape: %s", mel.shape)
+            return mel
+
+        except Exception as e:
+            logger.exception("Error computing mel spectrogram")
+            raise RuntimeError("Failed to compute mel spectrogram") from e
     
     def melspectrogram_torch(self, wav: torch.Tensor) -> torch.Tensor:
         """
@@ -259,7 +305,7 @@ class AudioProcessor:
         if self.preemphasize:
             wav = torch.cat([
                 wav[:, 0:1],
-                wav[:, 1:] - self.preemphasis * wav[:, :-1]
+                wav[:, 1:] - self.preemphasis_coeff * wav[:, :-1]
             ], dim=1)
             
         # Compute STFT
